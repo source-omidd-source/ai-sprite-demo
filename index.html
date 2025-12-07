@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تبدیل نقاشی به اسپرایت (نسخه دمو)</title>
+    <style>
+        body { font-family: Tahoma, sans-serif; background: #222; color: white; text-align: center; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; background: #333; padding: 20px; border-radius: 15px; }
+        
+        /* استایل ورودی‌ها */
+        .input-group { background: #444; padding: 15px; border-radius: 10px; margin-bottom: 15px; text-align: right; }
+        label { display: block; margin-bottom: 5px; color: #aaa; font-size: 12px; }
+        input[type="text"] { width: 95%; padding: 10px; border-radius: 5px; border: none; font-family: sans-serif; }
+        input[type="file"] { width: 100%; margin-top: 5px; }
+
+        /* دکمه و نتیجه */
+        button { background: #ff9800; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        
+        .preview-box { display: flex; justify-content: space-around; margin-top: 20px; }
+        .preview-box div { width: 45%; }
+        img { max-width: 100%; border-radius: 10px; border: 2px solid #555; background: white; }
+        .status { margin-top: 10px; color: #ffeb3b; font-size: 14px; min-height: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>🎨 نقاشی به اسپرایت گیم</h2>
+        
+        <div class="input-group">
+            <label>۱. نقاشی‌ات را انتخاب کن:</label>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="input-group">
+            <label>۲. بگو چی بشه (انگلیسی):</label>
+            <input type="text" id="prompt" value="Turn this into a pixel art sprite sheet game asset" placeholder="مثلا: Make it a cyberpunk robot">
+        </div>
+        
+        <button onclick="processImage()" id="btn">✨ جادو کن!</button>
+        <p class="status" id="status"></p>
+
+        <div class="preview-box">
+            <div>
+                <p>نقاشی شما:</p>
+                <img id="preview" src="https://via.placeholder.com/150?text=Upload" style="opacity: 0.5;">
+            </div>
+            <div>
+                <p>نتیجه:</p>
+                <img id="result" src="https://via.placeholder.com/150?text=Result" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        // 👇👇👇 توکن خودت رو دقیقاً اینجا بذار 👇👇👇
+        const MY_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; 
+
+        // مدل مخصوص تغییر عکس (Instruct Pix2Pix)
+        const MODEL_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix";
+
+        async function processImage() {
+            const fileInput = document.getElementById('fileInput');
+            const promptText = document.getElementById('prompt').value;
+            const status = document.getElementById('status');
+            const btn = document.getElementById('btn');
+            const resultImg = document.getElementById('result');
+            const previewImg = document.getElementById('preview');
+
+            // ۱. بررسی ورودی‌ها
+            if (MY_TOKEN.includes("xxx")) return alert("❌ توکن رو توی کد نذاشتی!");
+            if (fileInput.files.length === 0) return alert("❌ اول یه عکس انتخاب کن!");
+
+            btn.disabled = true;
+            btn.innerText = "⏳ دارم عکس رو آماده می‌کنم...";
+            
+            try {
+                // ۲. تبدیل و کوچک‌سازی عکس (خیلی مهم برای اینکه ارور نده)
+                status.innerText = "درحال فشرده‌سازی عکس...";
+                const base64Image = await resizeAndConvert(fileInput.files[0]);
+                previewImg.src = base64Image; // نمایش پیش‌نمایش
+
+                // ۳. ارسال به هوش مصنوعی
+                status.innerText = "🚀 درحال ارسال به سرور (۱۰-۲۰ ثانیه)...";
+                btn.innerText = "🤖 هوش مصنوعی داره فکر می‌کنه...";
+
+                const response = await fetch(MODEL_URL, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${MY_TOKEN}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        inputs: promptText, // دستور متنی
+                        parameters: {
+                            image: base64Image, // عکس تبدیل شده
+                            num_inference_steps: 20, // کیفیت
+                            image_guidance_scale: 1.5 // چقدر به عکس اصلی وفادار باشه
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error("خطای مدل: " + errText);
+                }
+
+                // ۴. دریافت نتیجه
+                const blob = await response.blob();
+                const resultUrl = URL.createObjectURL(blob);
+                
+                resultImg.src = resultUrl;
+                resultImg.style.display = 'block';
+                status.innerText = "✅ اسپرایت آماده شد!";
+
+            } catch (error) {
+                console.error(error);
+                status.innerText = "❌ خطا! کنسول مرورگر رو چک کن.";
+                if(error.message.includes("estimated_time")) {
+                     status.innerText = "⏳ مدل داره گرم میشه، ۱۰ ثانیه دیگه دوباره بزن!";
+                }
+            }
+
+            btn.disabled = false;
+            btn.innerText = "✨ جادو کن!";
+        }
+
+        // تابع کمکی برای کوچک کردن عکس (چون API رایگان عکس بزرگ قبول نمیکنه)
+        function resizeAndConvert(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.getElementById('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        // تنظیم سایز روی ۵۱۲ در ۵۱۲ (استاندارد هوش مصنوعی)
+                        canvas.width = 512;
+                        canvas.height = 512;
+                        
+                        // کشیدن عکس توی کانواس با سایز جدید
+                        ctx.drawImage(img, 0, 0, 512, 512);
+                        
+                        // خروجی گرفتن بدون هدر (چون بعضی مدل‌ها هدر دوست ندارند)
+                        // اما برای این مدل خاص Base64 کامل می‌فرستیم
+                        resolve(canvas.toDataURL("image/jpeg", 0.8)); 
+                    };
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+    </script>
+</body>
+</html>
